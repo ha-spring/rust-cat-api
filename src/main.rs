@@ -1,3 +1,4 @@
+use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 mod models;
 mod schema;
 use self::models::*;
@@ -55,13 +56,18 @@ async fn get_cat(pool: web::Data<DbPool>, cat_id: web::Path<CatId>) -> impl Resp
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init();
+    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
+    builder
+        .set_private_key_file("key-no-password.pem", SslFiletype::PEM)
+        .unwrap();
+    builder.set_certificate_chain_file("cert.pem").unwrap();
     dotenv().ok();
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let manager = ConnectionManager::<PgConnection>::new(&database_url);
     let pool = r2d2::Pool::builder()
         .build(manager)
         .expect("Faild to create DB connection pool");
-    println!("Listening on http://127.0.0.1:8080");
+    println!("Listening on https://127.0.0.1:8080");
     HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
@@ -69,7 +75,7 @@ async fn main() -> std::io::Result<()> {
             .route("/cats", web::get().to(get_cats))
             .route("/cat/{id}", web::get().to(get_cat))
     })
-    .bind("127.0.0.1:8080")?
+    .bind_openssl("127.0.0.1:8080", builder)?
     .run()
     .await
 }
