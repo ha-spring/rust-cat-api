@@ -8,6 +8,9 @@ use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager};
 use diesel::sql_types::Integer;
 use dotenv::dotenv;
+use serde::Deserialize;
+use validator::Validate;
+use validator_derive::Validate;
 
 type DbPool = r2d2::Pool<ConnectionManager<PgConnection>>;
 
@@ -19,12 +22,18 @@ async fn get_cats(pool: web::Data<DbPool>) -> impl Responder {
     }
 }
 
-async fn get_cat(pool: web::Data<DbPool>, cat_id: web::Path<i32>) -> impl Responder {
+#[derive(Deserialize, Validate)]
+struct CatId {
+    #[validate(range(min = 1, max = 150))]
+    id: i32,
+}
+
+async fn get_cat(pool: web::Data<DbPool>, cat_id: web::Path<CatId>) -> impl Responder {
+    if let Err(validation_errors) = cat_id.validate() {
+        return HttpResponse::BadRequest().json(validation_errors);
+    }
     let mut connection = pool.get().expect("Can't get DB connection from pool");
-    match cats
-        .filter(id.eq(cat_id.into_inner()))
-        .first::<Cat>(&mut connection)
-    {
+    match cats.filter(id.eq(cat_id.id)).first::<Cat>(&mut connection) {
         Ok(cat_data) => HttpResponse::Ok().json(cat_data),
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
