@@ -15,7 +15,11 @@ use validator_derive::Validate;
 type DbPool = r2d2::Pool<ConnectionManager<PgConnection>>;
 
 async fn get_cats(pool: web::Data<DbPool>) -> impl Responder {
-    let mut connection = pool.get().expect("Can't get DB connection from pool");
+    let mut connection = match pool.get() {
+        Ok(connection) => connection,
+        Err(_) => return HttpResponse::InternalServerError().finish(),
+    };
+
     match cats.limit(100).load::<Cat>(&mut connection) {
         Ok(cats_data) => HttpResponse::Ok().json(cats_data),
         Err(_) => HttpResponse::InternalServerError().finish(),
@@ -30,9 +34,12 @@ struct CatId {
 
 async fn get_cat(pool: web::Data<DbPool>, cat_id: web::Path<CatId>) -> impl Responder {
     if let Err(validation_errors) = cat_id.validate() {
-        return HttpResponse::BadRequest().json(validation_errors);
+        return HttpResponse::BadRequest().finish();
     }
-    let mut connection = pool.get().expect("Can't get DB connection from pool");
+    let mut connection = match pool.get() {
+        Ok(connection) => connection,
+        Err(_) => return HttpResponse::InternalServerError().finish(),
+    };
     match cats.filter(id.eq(cat_id.id)).first::<Cat>(&mut connection) {
         Ok(cat_data) => HttpResponse::Ok().json(cat_data),
         Err(_) => HttpResponse::InternalServerError().finish(),
